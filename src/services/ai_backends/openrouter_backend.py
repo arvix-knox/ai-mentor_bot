@@ -8,12 +8,12 @@ from src.services.ai_backends.base import BaseAIBackend
 logger = logging.getLogger(__name__)
 
 
-class GroqBackend(BaseAIBackend):
+class OpenRouterBackend(BaseAIBackend):
     def __init__(self):
-        self.api_key = settings.GROQ_API_KEY
-        self.base_url = "https://api.groq.com/openai/v1/chat/completions"
-        self.model = "llama-3.1-8b-instant"
-        self.client = httpx.AsyncClient(timeout=30.0)
+        self.api_key = settings.OPENROUTER_API_KEY
+        self.base_url = "https://openrouter.ai/api/v1/chat/completions"
+        self.model = "meta-llama/llama-3.1-8b-instruct:free"
+        self.client = httpx.AsyncClient(timeout=60.0)
 
     async def generate(
         self,
@@ -44,35 +44,35 @@ class GroqBackend(BaseAIBackend):
                 headers={
                     "Authorization": f"Bearer {self.api_key}",
                     "Content-Type": "application/json",
+                    "HTTP-Referer": "https://github.com/mentor-bot",
                 },
                 json={
                     "model": self.model,
                     "messages": messages,
                     "max_tokens": max_tokens,
                     "temperature": 0.7,
-                    "top_p": 0.9,
                 },
             )
             response.raise_for_status()
             data = response.json()
 
             elapsed = int((time.monotonic() - start_time) * 1000)
-            logger.info(f"Groq response in {elapsed}ms")
+            logger.info(f"OpenRouter response in {elapsed}ms")
 
             return data["choices"][0]["message"]["content"].strip()
 
         except httpx.TimeoutException:
-            logger.error("Groq API timeout")
+            logger.error("OpenRouter API timeout")
             return "⏳ AI наставник думает слишком долго. Попробуй позже."
 
         except httpx.HTTPStatusError as e:
-            logger.error(f"Groq API error: {e.response.status_code}")
+            logger.error(f"OpenRouter API error: {e.response.status_code}")
             if e.response.status_code == 429:
                 return "⚠️ Слишком много запросов к AI. Подожди минуту."
             return "⚠️ AI наставник временно недоступен."
 
         except Exception as e:
-            logger.error(f"Groq unexpected error: {e}")
+            logger.error(f"OpenRouter unexpected error: {e}")
             return "⚠️ Ошибка AI. Попробуй позже."
 
     async def generate_summary(self, text: str) -> str:
