@@ -5,3 +5,6 @@ from src.repositories.habit_repo import HabitRepository
 from src.repositories.journal_repo import JournalRepository
 from src.repositories.xp_repo import XPRepository
 from src.repositories.memory_repo import MemoryRepository
+from src.repositories.playlist_repo import PlaylistRepository
+from src.repositories.learning_repo import LearningRepository
+from src.repositories.achievement_repo import AchievementRepository

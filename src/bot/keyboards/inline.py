@@ -16,6 +16,10 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="📈 Обзор недели", callback_data="menu:review"),
         ],
         [
+            InlineKeyboardButton(text="🎵 Плейлисты", callback_data="menu:playlists"),
+            InlineKeyboardButton(text="🎓 Обучение", callback_data="menu:learning"),
+        ],
+        [
             InlineKeyboardButton(text="👤 Профиль", callback_data="menu:profile"),
             InlineKeyboardButton(text="⚙️ Настройки", callback_data="menu:settings"),
         ],
@@ -24,7 +28,10 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
 
 def tasks_menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="➕ Новая задача", callback_data="task:add")],
+        [
+            InlineKeyboardButton(text="➕ Новая задача", callback_data="task:add"),
+            InlineKeyboardButton(text="⚡ Полезная задача", callback_data="task:quick:add"),
+        ],
         [
             InlineKeyboardButton(text="📋 Все", callback_data="task:list:all"),
             InlineKeyboardButton(text="⬜ Активные", callback_data="task:list:active"),
@@ -103,15 +110,19 @@ def task_deadline_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="📅 Через месяц", callback_data=f"tdeadline:{today + timedelta(30)}"),
         ],
         [InlineKeyboardButton(text="⏭ Без дедлайна", callback_data="tdeadline:none")],
+        [InlineKeyboardButton(text="🗓 Конкретная дата (YYYY-MM-DD)", callback_data="tdeadline:custom")],
     ])
 
 
 def remind_time_keyboard(task_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Вкл напоминание", callback_data=f"tremind_on:{task_id}")],
         [InlineKeyboardButton(text="🌅 Утро", callback_data=f"tremind_period:{task_id}:morning")],
         [InlineKeyboardButton(text="☀️ День", callback_data=f"tremind_period:{task_id}:afternoon")],
         [InlineKeyboardButton(text="🌙 Вечер", callback_data=f"tremind_period:{task_id}:evening")],
-        [InlineKeyboardButton(text="🚫 Без напоминания", callback_data=f"task:view:{task_id}")],
+        [InlineKeyboardButton(text="🕐 Другое время (HH:MM)", callback_data=f"tremind_custom:{task_id}")],
+        [InlineKeyboardButton(text="🚫 Выкл напоминание", callback_data=f"tremind_off:{task_id}")],
+        [InlineKeyboardButton(text="◀️ К задаче", callback_data=f"task:view:{task_id}")],
     ])
 
 
@@ -130,8 +141,43 @@ def remind_exact_time_keyboard(task_id: int, period: str) -> InlineKeyboardMarku
             row = []
     if row:
         buttons.append(row)
+    buttons.append([InlineKeyboardButton(text="🕐 Другое (HH:MM)", callback_data=f"tremind_custom:{task_id}")])
     buttons.append([InlineKeyboardButton(text="◀️ Назад", callback_data=f"task:remind:{task_id}")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def task_recurrence_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📅 Каждый день", callback_data="trecur:daily")],
+        [InlineKeyboardButton(text="🗓 Каждую неделю", callback_data="trecur:weekly")],
+        [InlineKeyboardButton(text="🗓 Каждый месяц", callback_data="trecur:monthly")],
+        [InlineKeyboardButton(text="🎯 Конкретная дата", callback_data="trecur:on_date")],
+        [InlineKeyboardButton(text="⏭ Без повторений", callback_data="trecur:none")],
+    ])
+
+
+def task_quick_difficulty_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🟢 Легко", callback_data="tquick:diff:low"),
+            InlineKeyboardButton(text="🟡 Средне", callback_data="tquick:diff:medium"),
+        ],
+        [
+            InlineKeyboardButton(text="🟠 Сложно", callback_data="tquick:diff:high"),
+            InlineKeyboardButton(text="🔴 Очень сложно", callback_data="tquick:diff:critical"),
+        ],
+        [InlineKeyboardButton(text="◀️ К задачам", callback_data="menu:tasks")],
+    ])
+
+
+def reminder_toggle_keyboard(entity: str, entity_id: int) -> InlineKeyboardMarkup:
+    prefix = "t" if entity == "task" else "h"
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Вкл", callback_data=f"{prefix}remind_enable:{entity_id}")],
+        [InlineKeyboardButton(text="🚫 Выкл", callback_data=f"{prefix}remind_disable:{entity_id}")],
+        [InlineKeyboardButton(text="🕐 Выбрать время", callback_data=f"{prefix}remind_custom:{entity_id}")],
+        [InlineKeyboardButton(text="◀️ Назад", callback_data="menu:main")],
+    ])
 
 
 def habits_menu_keyboard() -> InlineKeyboardMarkup:
@@ -242,6 +288,11 @@ def settings_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🤖 Режим AI", callback_data="settings:ai_mode")],
         [InlineKeyboardButton(text="🔔 Уведомления", callback_data="settings:notifications")],
+        [InlineKeyboardButton(text="🧠 Права AI", callback_data="settings:ai_permissions")],
+        [InlineKeyboardButton(text="🧾 AI-ежедневка", callback_data="settings:ai_daily_brief")],
+        [InlineKeyboardButton(text="📔 AI-проверка журнала", callback_data="settings:ai_journal_review")],
+        [InlineKeyboardButton(text="✍️ Текст напоминаний", callback_data="settings:remind_template")],
+        [InlineKeyboardButton(text="🗑 Очистка данных", callback_data="settings:data_cleanup")],
         [InlineKeyboardButton(text="🕐 Часовой пояс", callback_data="settings:timezone")],
         [InlineKeyboardButton(text="◀️ Меню", callback_data="menu:main")],
     ])
@@ -253,6 +304,7 @@ def profile_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="💻 Стек технологий", callback_data="profile:edit:stack")],
         [InlineKeyboardButton(text="🎯 Цели", callback_data="profile:edit:goals")],
         [InlineKeyboardButton(text="📚 Уровень знаний", callback_data="profile:edit:level_desc")],
+        [InlineKeyboardButton(text="🏆 Достижения", callback_data="profile:achievements")],
         [InlineKeyboardButton(text="◀️ Меню", callback_data="menu:main")],
     ])
 
@@ -265,6 +317,10 @@ def stack_select_keyboard() -> InlineKeyboardMarkup:
         ("🐘 PHP", "PHP"), ("📱 Flutter", "Flutter"), ("🍎 Swift", "Swift"),
         ("🤖 ML/AI", "ML/AI"), ("🗄 SQL", "SQL"), ("🐧 Linux", "Linux"),
         ("🐳 Docker", "Docker"), ("☁️ AWS", "AWS"), ("🔥 FastAPI", "FastAPI"),
+        ("⚙️ Django", "Django"), ("📡 gRPC", "gRPC"), ("🧱 PostgreSQL", "PostgreSQL"),
+        ("📦 Redis", "Redis"), ("☸️ Kubernetes", "Kubernetes"), ("🧪 Pytest", "Pytest"),
+        ("🧬 GraphQL", "GraphQL"), ("🌩 GCP", "GCP"), ("🧭 Terraform", "Terraform"),
+        ("🔐 CyberSecurity", "CyberSecurity"), ("📊 Data Engineering", "Data Engineering"),
     ]
     buttons = []
     row = []
@@ -322,6 +378,8 @@ def notification_settings_keyboard(settings_dict: dict) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text=f"{icon('motivation')} 💪 Мотивация", callback_data="notif:toggle:motivation")],
         [InlineKeyboardButton(text=f"{icon('streak')} 🔥 Streak alert", callback_data="notif:toggle:streak")],
         [InlineKeyboardButton(text=f"{icon('weekly')} 📊 Недельный обзор", callback_data="notif:toggle:weekly")],
+        [InlineKeyboardButton(text=f"{icon('task_remind_default')} 📋 Напоминания задач", callback_data="notif:toggle:task_remind_default")],
+        [InlineKeyboardButton(text=f"{icon('habit_remind_default')} 🔄 Напоминания привычек", callback_data="notif:toggle:habit_remind_default")],
         [InlineKeyboardButton(text="🕐 Время уведомлений", callback_data="notif:time")],
         [InlineKeyboardButton(text="◀️ Настройки", callback_data="menu:settings")],
     ])
@@ -349,6 +407,7 @@ def notif_exact_time_keyboard(period: str) -> InlineKeyboardMarkup:
             row = []
     if row:
         buttons.append(row)
+    buttons.append([InlineKeyboardButton(text="🕐 Другое (HH:MM)", callback_data=f"notif_set:{period}:custom")])
     buttons.append([InlineKeyboardButton(text="◀️ Назад", callback_data="notif:time")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -381,4 +440,102 @@ def confirm_keyboard(yes_data: str, no_data: str) -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="✅ Да", callback_data=yes_data),
             InlineKeyboardButton(text="❌ Нет", callback_data=no_data),
         ],
+    ])
+
+
+def ai_permissions_keyboard(perms: dict) -> InlineKeyboardMarkup:
+    def icon(key: str) -> str:
+        return "🟢" if perms.get(key, True) else "⚪"
+
+    buttons = [
+        [InlineKeyboardButton(text=f"{icon('read_tasks')} Читать задачи", callback_data="ai_perm:toggle:read_tasks")],
+        [InlineKeyboardButton(text=f"{icon('read_habits')} Читать привычки", callback_data="ai_perm:toggle:read_habits")],
+        [InlineKeyboardButton(text=f"{icon('read_journal')} Читать журнал", callback_data="ai_perm:toggle:read_journal")],
+        [InlineKeyboardButton(text=f"{icon('read_stats')} Читать статистику", callback_data="ai_perm:toggle:read_stats")],
+        [InlineKeyboardButton(text=f"{icon('create_tasks')} Создавать задачи", callback_data="ai_perm:toggle:create_tasks")],
+        [InlineKeyboardButton(text=f"{icon('modify_tasks')} Изменять задачи", callback_data="ai_perm:toggle:modify_tasks")],
+        [InlineKeyboardButton(text=f"{icon('read_resources')} Читать обучение", callback_data="ai_perm:toggle:read_resources")],
+        [InlineKeyboardButton(text="◀️ Настройки", callback_data="menu:settings")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def data_cleanup_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗑 Удалить профиль", callback_data="cleanup:profile")],
+        [InlineKeyboardButton(text="🧠 Удалить AI историю", callback_data="cleanup:history")],
+        [InlineKeyboardButton(text="◀️ Настройки", callback_data="menu:settings")],
+    ])
+
+
+def history_period_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🕐 За день", callback_data="cleanup:history:day")],
+        [InlineKeyboardButton(text="📆 За неделю", callback_data="cleanup:history:week")],
+        [InlineKeyboardButton(text="🗓 За месяц", callback_data="cleanup:history:month")],
+        [InlineKeyboardButton(text="🧾 За год", callback_data="cleanup:history:year")],
+        [InlineKeyboardButton(text="💥 Полностью", callback_data="cleanup:history:all")],
+        [InlineKeyboardButton(text="◀️ Назад", callback_data="settings:data_cleanup")],
+    ])
+
+
+def learning_menu_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ Добавить ресурс", callback_data="learn:add")],
+        [InlineKeyboardButton(text="🧠 Подобрать по теме", callback_data="learn:suggest")],
+        [InlineKeyboardButton(text="📚 Мои ресурсы", callback_data="learn:list")],
+        [InlineKeyboardButton(text="◀️ Меню", callback_data="menu:main")],
+    ])
+
+
+def learning_type_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📄 Статья", callback_data="learn:type:article")],
+        [InlineKeyboardButton(text="🎬 Видео", callback_data="learn:type:video")],
+        [InlineKeyboardButton(text="🎓 Курс", callback_data="learn:type:course")],
+        [InlineKeyboardButton(text="⚡ Краткое объяснение", callback_data="learn:type:summary")],
+    ])
+
+
+def learning_item_keyboard(resource_id: int, completed: bool = False) -> InlineKeyboardMarkup:
+    done_text = "✅ Пройдено" if completed else "✔️ Отметить пройденным"
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=done_text, callback_data=f"learn:done:{resource_id}")],
+        [InlineKeyboardButton(text="🗑 Удалить", callback_data=f"learn:del:{resource_id}")],
+        [InlineKeyboardButton(text="◀️ К списку", callback_data="learn:list")],
+    ])
+
+
+def learning_list_keyboard(resources: list) -> InlineKeyboardMarkup:
+    buttons = []
+    for r in resources[:12]:
+        icon = "✅" if r.is_completed else "📌"
+        buttons.append([InlineKeyboardButton(text=f"{icon} {r.title[:40]}", callback_data=f"learn:view:{r.id}")])
+    buttons.append([InlineKeyboardButton(text="◀️ Обучение", callback_data="menu:learning")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def playlists_menu_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ Новый плейлист", callback_data="plist:add")],
+        [InlineKeyboardButton(text="🎵 Мои плейлисты", callback_data="plist:list")],
+        [InlineKeyboardButton(text="◀️ Меню", callback_data="menu:main")],
+    ])
+
+
+def playlist_list_keyboard(playlists: list) -> InlineKeyboardMarkup:
+    buttons = []
+    for p in playlists[:12]:
+        buttons.append([InlineKeyboardButton(text=f"{p.emoji} {p.name[:40]}", callback_data=f"plist:view:{p.id}")])
+    buttons.append([InlineKeyboardButton(text="◀️ Плейлисты", callback_data="menu:playlists")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def playlist_item_keyboard(playlist_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ Добавить трек", callback_data=f"plist:add_track:{playlist_id}")],
+        [InlineKeyboardButton(text="▶️ Слушать", callback_data=f"plist:play:{playlist_id}")],
+        [InlineKeyboardButton(text="🧹 Выйти и удалить сообщения", callback_data=f"plist:stop:{playlist_id}")],
+        [InlineKeyboardButton(text="🗑 Удалить плейлист", callback_data=f"plist:del:{playlist_id}")],
+        [InlineKeyboardButton(text="◀️ К списку", callback_data="plist:list")],
     ])

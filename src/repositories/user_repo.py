@@ -23,8 +23,10 @@ class UserRepository(BaseRepository):
         user = await self.get_by_telegram_id(telegram_id)
         if user:
             user.username = username
-            user.first_name = first_name
             user.last_name = last_name
+            # Keep user-defined display name stable between sessions.
+            if not user.display_name:
+                user.first_name = first_name
             await self.session.flush()
             return user
 
