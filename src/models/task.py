@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from sqlalchemy import Integer, String, Text, ForeignKey, Date, Index
+from sqlalchemy import Integer, String, Text, ForeignKey, Date, Index, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy import func
@@ -16,9 +16,7 @@ class Task(Base, TimestampMixin):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
 
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
@@ -34,6 +32,14 @@ class Task(Base, TimestampMixin):
 
     xp_reward: Mapped[int] = mapped_column(Integer, default=0)
 
+    is_recurring: Mapped[bool] = mapped_column(Boolean, default=False)
+    recurrence_type: Mapped[str | None] = mapped_column(String(20))
+    recurrence_date: Mapped[date | None] = mapped_column(Date)
+
+    remind_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    remind_time: Mapped[str | None] = mapped_column(String(10))
+    remind_text: Mapped[str | None] = mapped_column(String(500))
+
     user = relationship("User", back_populates="tasks")
     logs = relationship("TaskLog", back_populates="task", cascade="all, delete")
 
@@ -42,9 +48,7 @@ class TaskLog(Base):
     __tablename__ = "task_logs"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    task_id: Mapped[int] = mapped_column(
-        ForeignKey("tasks.id", ondelete="CASCADE")
-    )
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"))
     old_status: Mapped[str | None] = mapped_column(String(50))
     new_status: Mapped[str] = mapped_column(String(50))
     changed_at: Mapped[datetime] = mapped_column(server_default=func.now())

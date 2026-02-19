@@ -13,9 +13,7 @@ class Habit(Base, TimestampMixin):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE")
-    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(String(500))
@@ -34,6 +32,10 @@ class Habit(Base, TimestampMixin):
 
     xp_per_completion: Mapped[int] = mapped_column(Integer, default=15)
 
+    remind_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    remind_time: Mapped[str | None] = mapped_column(String(10), default="21:00")
+    remind_text: Mapped[str | None] = mapped_column(String(500))
+
     user = relationship("User", back_populates="habits")
     logs = relationship("HabitLog", back_populates="habit", cascade="all, delete")
 
@@ -46,12 +48,8 @@ class HabitLog(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    habit_id: Mapped[int] = mapped_column(
-        ForeignKey("habits.id", ondelete="CASCADE")
-    )
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE")
-    )
+    habit_id: Mapped[int] = mapped_column(ForeignKey("habits.id", ondelete="CASCADE"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
 
     log_date: Mapped[date] = mapped_column(Date, nullable=False)
     completed: Mapped[bool] = mapped_column(Boolean, default=True)
