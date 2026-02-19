@@ -1,83 +1,64 @@
-from aiogram import Router
+from aiogram import Router, F
 from aiogram.filters import Command
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.user import User
 from src.repositories.user_repo import UserRepository
 from src.services.analytics_service import AnalyticsService
+from src.bot.keyboards.inline import ai_mode_keyboard, back_to_menu_keyboard
 
 router = Router()
 
-VALID_MODES = {"strict", "soft", "adaptive"}
-
 MODE_DESCRIPTIONS = {
-    "strict": "🔴 *Strict* — жёсткий наставник, без поблажек",
-    "soft": "🟢 *Soft* — мягкий наставник, поддержка и эмпатия",
-    "adaptive": "🟡 *Adaptive* — подстраивается под твои метрики",
+    "strict": "🔴 *Strict* — жёсткий, без поблажек",
+    "soft": "🟢 *Soft* — мягкий, поддерживающий",
+    "adaptive": "🟡 *Adaptive* — подстраивается под метрики",
 }
-
-
-def mode_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="🔴 Strict", callback_data="mode:strict"),
-            InlineKeyboardButton(text="🟢 Soft", callback_data="mode:soft"),
-            InlineKeyboardButton(text="🟡 Adaptive", callback_data="mode:adaptive"),
-        ]
-    ])
 
 
 @router.message(Command("mode"))
 async def cmd_mode(message: Message, session: AsyncSession, db_user: User):
-    text = message.text.strip()
-    parts = text.split(maxsplit=1)
-
-    if len(parts) < 2:
-        await message.answer(
-            f"🤖 *Режим AI наставника*\n\n"
-            f"Текущий: {MODE_DESCRIPTIONS[db_user.ai_mode]}\n\n"
-            f"Выбери режим:",
-            reply_markup=mode_keyboard(),
-        )
-        return
-
-    mode = parts[1].lower().strip()
-    if mode not in VALID_MODES:
-        await message.answer(
-            f"❌ Неверный режим. Доступны: strict, soft, adaptive"
-        )
-        return
-
-    user_repo = UserRepository(session)
-    await user_repo.update(db_user.id, ai_mode=mode)
-
-    await message.answer(f"✅ Режим изменён:\n{MODE_DESCRIPTIONS[mode]}")
+    await message.answer(
+        f"🤖 *Режим AI*\n\nТекущий: {MODE_DESCRIPTIONS[db_user.ai_mode]}",
+        reply_markup=ai_mode_keyboard(db_user.ai_mode),
+    )
 
 
-@router.callback_query(lambda c: c.data and c.data.startswith("mode:"))
+@router.callback_query(F.data == "menu:settings")
+async def callback_settings(callback: CallbackQuery, session: AsyncSession, db_user: User):
+    await callback.message.edit_text(
+        f"⚙️ *Настройки*\n\nРежим AI: {MODE_DESCRIPTIONS[db_user.ai_mode]}",
+        reply_markup=ai_mode_keyboard(db_user.ai_mode),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("mode:"))
 async def callback_mode(callback: CallbackQuery, session: AsyncSession, db_user: User):
     mode = callback.data.split(":")[1]
-
-    if mode not in VALID_MODES:
+    if mode not in ("strict", "soft", "adaptive"):
         await callback.answer("Неверный режим")
         return
-
     user_repo = UserRepository(session)
     await user_repo.update(db_user.id, ai_mode=mode)
-
+    db_user.ai_mode = mode
     await callback.message.edit_text(
-        f"✅ Режим изменён:\n{MODE_DESCRIPTIONS[mode]}"
+        f"✅ Режим изменён:\n{MODE_DESCRIPTIONS[mode]}",
+        reply_markup=ai_mode_keyboard(mode),
     )
-    await callback.answer("Done!")
+    await callback.answer("Сохранено!")
 
 
 @router.message(Command("review"))
 async def cmd_review(message: Message, session: AsyncSession, db_user: User):
-    await message.answer("📊 Генерирую недельный обзор...")
-
+    msg = await message.answer("📊 Генерирую обзор...")
     analytics_svc = AnalyticsService(session)
     data = await analytics_svc.generate_weekly_report(db_user.id)
-    report_text = AnalyticsService.format_weekly_report(data)
+    report = AnalyticsService.format_weekly_report(data)
+    await msg.edit_text(report, reply_markup=back_to_menu_keyboard())
 
-    await message.answer(report_text)
+
+@router.message(F.text == "📈 Обзор недели")
+async def reply_review(message: Message, session: AsyncSession, db_user: User):
+    await cmd_review(message, session=session, db_user=db_user)

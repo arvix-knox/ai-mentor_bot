@@ -1,20 +1,20 @@
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
 
-def main_menu_keyboard() -> ReplyKeyboardMarkup:
+def main_reply_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [
-                KeyboardButton(text="📋 Tasks"),
-                KeyboardButton(text="🔄 Habits"),
+                KeyboardButton(text="📋 Задачи"),
+                KeyboardButton(text="🔄 Привычки"),
             ],
             [
-                KeyboardButton(text="📝 Journal"),
+                KeyboardButton(text="📝 Журнал"),
                 KeyboardButton(text="🤖 AI"),
             ],
             [
-                KeyboardButton(text="📊 Stats"),
-                KeyboardButton(text="⚙️ Settings"),
+                KeyboardButton(text="📊 Статистика"),
+                KeyboardButton(text="📈 Обзор недели"),
             ],
         ],
         resize_keyboard=True,

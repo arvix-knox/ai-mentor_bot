@@ -1,133 +1,146 @@
-import time
+import json
 import logging
+from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.config import settings
-from src.services.ai_backends.base import BaseAIBackend
-from src.services.ai_backends.groq_backend import GroqBackend
-from src.services.ai_backends.openrouter_backend import OpenRouterBackend
-from src.services.memory_service import MemoryService
 from src.repositories.memory_repo import MemoryRepository
+from src.repositories.task_repo import TaskRepository
+from src.repositories.habit_repo import HabitRepository
 from src.repositories.user_repo import UserRepository
 
 logger = logging.getLogger(__name__)
 
-PERSONALITY_PROMPTS = {
-    "strict": (
-        "You are a strict, no-nonsense programming mentor. "
-        "You speak directly, challenge excuses, and push for results. "
-        "You don't sugarcoat. If the user is slacking, you call it out. "
-        "You focus on discipline, consistency, and measurable progress. "
-        "Always respond in Russian. Be concise — max 3-4 paragraphs. "
-        "Use specific actionable advice, not vague encouragement."
-    ),
-    "soft": (
-        "You are a supportive and empathetic programming mentor. "
-        "You encourage, celebrate small wins, and understand that learning is hard. "
-        "You're patient and kind, but still guide toward growth. "
-        "You help break down overwhelming tasks into manageable steps. "
-        "Always respond in Russian. Be warm but practical. "
-        "Max 3-4 paragraphs."
-    ),
-    "adaptive": (
-        "You are an adaptive programming mentor. "
-        "Analyze the user's current state from their metrics: "
-        "- If discipline_score < 40: be more supportive and encouraging. "
-        "- If discipline_score > 70: challenge them with harder goals. "
-        "- If streak is broken: be understanding but firm. "
-        "- If streak is high: celebrate and raise the bar. "
-        "Adjust your tone based on context. Always respond in Russian. "
-        "Max 3-4 paragraphs. Be specific and actionable."
-    ),
-}
 
-
-class AIService:
+class MemoryService:
     def __init__(self, session: AsyncSession):
         self.session = session
-        self.memory_service = MemoryService(session)
         self.memory_repo = MemoryRepository(session)
+        self.task_repo = TaskRepository(session)
+        self.habit_repo = HabitRepository(session)
         self.user_repo = UserRepository(session)
-        self.primary_backend = self._create_backend(settings.AI_BACKEND)
-        self.fallback_backend = self._create_fallback()
 
-    def _create_backend(self, backend_name: str) -> BaseAIBackend:
-        if backend_name == "groq":
-            return GroqBackend()
-        if backend_name == "openrouter":
-            return OpenRouterBackend()
-        return GroqBackend()
+    async def build_context(self, user_id: int) -> str:
+        profile_block = await self._build_profile_block(user_id)
+        weekly_block = await self._build_weekly_block(user_id)
+        session_block = await self._build_session_block(user_id)
 
-    def _create_fallback(self) -> BaseAIBackend | None:
-        if settings.AI_BACKEND == "groq" and settings.OPENROUTER_API_KEY:
-            return OpenRouterBackend()
-        if settings.AI_BACKEND == "openrouter" and settings.GROQ_API_KEY:
-            return GroqBackend()
-        return None
+        context = (
+            f"=== USER PROFILE ===\n{profile_block}\n\n"
+            f"=== CURRENT WEEK ===\n{weekly_block}\n\n"
+            f"=== RECENT CONVERSATION ===\n{session_block}"
+        )
 
-    async def get_response(self, user_id: int, message: str) -> tuple[str, int]:
-        start = time.monotonic()
+        return self._truncate_context(context, max_tokens=1500)
 
+    async def _build_profile_block(self, user_id: int) -> str:
         user = await self.user_repo.get_by_id(user_id)
-        context = await self.memory_service.build_context(user_id)
-        system_prompt = PERSONALITY_PROMPTS.get(user.ai_mode, PERSONALITY_PROMPTS["adaptive"])
 
-        response = await self._call_with_fallback(system_prompt, context, message)
+        summary = await self.memory_repo.get_active_summary(user_id, "profile_summary")
+        if summary:
+            return summary.content
 
-        elapsed_ms = int((time.monotonic() - start) * 1000)
+        tech_stack = []
+        goals = []
+        try:
+            if user.tech_stack:
+                tech_stack = json.loads(user.tech_stack)
+            if user.goals:
+                goals = json.loads(user.goals)
+        except (json.JSONDecodeError, TypeError):
+            pass
 
-        await self.memory_repo.create_interaction(
-            user_id=user_id,
-            user_message=message[:2000],
-            ai_response=response[:2000],
-            ai_mode=user.ai_mode,
-            response_time_ms=elapsed_ms,
+        tech_str = ", ".join(tech_stack) if tech_stack else "Not set"
+        goals_str = ", ".join(goals) if goals else "Not set"
+
+        return (
+            f"Name: {user.first_name}\n"
+            f"Level: {user.level} (XP: {user.xp})\n"
+            f"Tech Stack: {tech_str}\n"
+            f"Goals: {goals_str}\n"
+            f"Discipline Score: {user.discipline_score:.0f}/100\n"
+            f"Growth Score: {user.growth_score:.0f}/100\n"
+            f"AI Mode: {user.ai_mode}"
         )
 
-        return response, elapsed_ms
-
-    async def _call_with_fallback(
-        self, system_prompt: str, context: str, message: str
-    ) -> str:
-        response = await self.primary_backend.generate(
-            system_prompt=system_prompt,
-            context=context,
-            user_message=message,
-            max_tokens=800,
-        )
-
-        if response.startswith("⚠️") and self.fallback_backend:
-            logger.info("Primary AI failed, trying fallback")
-            response = await self.fallback_backend.generate(
-                system_prompt=system_prompt,
-                context=context,
-                user_message=message,
-                max_tokens=800,
+    async def _build_weekly_block(self, user_id: int) -> str:
+        tasks = await self.task_repo.get_active_tasks(user_id, limit=5)
+        if tasks:
+            tasks_text = "\n".join(
+                f"- [{t.priority}] {t.title}"
+                + (f" (due: {t.deadline})" if t.deadline else "")
+                for t in tasks
             )
+        else:
+            tasks_text = "No active tasks"
 
-        return response
+        habits = await self.habit_repo.get_active_habits(user_id)
+        if habits:
+            habits_text = "\n".join(
+                f"- {h.emoji} {h.name}: streak {h.current_streak}d"
+                for h in habits
+            )
+        else:
+            habits_text = "No habits tracked"
 
-    async def generate_summary(self, text: str) -> str:
-        return await self.primary_backend.generate_summary(text)
+        weekly_summary = await self.memory_repo.get_active_summary(user_id, "weekly_summary")
+        summary_text = weekly_summary.content if weekly_summary else "No weekly summary yet"
 
-    async def generate_weekly_review(self, user_id: int, metrics: dict) -> str:
-        prompt = (
-            f"Generate a weekly review for a developer based on these metrics:\n"
-            f"- Tasks completed: {metrics['tasks_completed']}/{metrics['tasks_created']}\n"
-            f"- Tasks overdue: {metrics['tasks_overdue']}\n"
-            f"- Habit completion rate: {metrics['habit_rate']:.0%}\n"
-            f"- Best streak: {metrics['best_streak']} days\n"
-            f"- Journal entries: {metrics['journal_count']}\n"
-            f"- XP earned: {metrics['xp_earned']}, XP lost: {metrics['xp_lost']}\n"
-            f"- Discipline score: {metrics['discipline']:.0f}/100\n"
-            f"- Growth score: {metrics['growth']:.0f}/100\n\n"
-            f"Write 3-5 sentences in Russian: what went well, what needs improvement, "
-            f"and one specific actionable recommendation for next week."
+        return (
+            f"Active Tasks:\n{tasks_text}\n\n"
+            f"Habits:\n{habits_text}\n\n"
+            f"Last Week Summary: {summary_text}"
         )
 
-        return await self.primary_backend.generate(
-            system_prompt="You are a data-driven programming mentor analyzing weekly metrics. Respond in Russian.",
-            context="",
-            user_message=prompt,
-            max_tokens=400,
+    async def _build_session_block(self, user_id: int) -> str:
+        interactions = await self.memory_repo.get_recent_interactions(user_id, limit=3)
+        if not interactions:
+            return "No previous messages in this session."
+
+        lines = []
+        for inter in interactions:
+            user_msg = inter.user_message[:150]
+            ai_msg = inter.ai_response[:150]
+            lines.append(f"User: {user_msg}")
+            lines.append(f"AI: {ai_msg}")
+
+        return "\n".join(lines)
+
+    def _truncate_context(self, text: str, max_tokens: int) -> str:
+        max_chars = max_tokens * 4
+        if len(text) <= max_chars:
+            return text
+        return text[:max_chars] + "\n[...context truncated...]"
+
+    async def compress_memory(self, user_id: int):
+        week_ago = datetime.utcnow() - timedelta(days=7)
+
+        interactions = await self.memory_repo.get_interactions_since(user_id, week_ago)
+        if not interactions:
+            return
+
+        interaction_text = "\n".join(
+            f"User: {i.user_message[:100]}\nAI: {i.ai_response[:100]}"
+            for i in interactions[-20:]
         )
+
+        from src.services.ai_service import AIService
+        ai_svc = AIService(self.session)
+
+        summary = await ai_svc.generate_summary(
+            f"Summarize these mentoring interactions in 3-5 bullet points:\n{interaction_text}"
+        )
+
+        await self.memory_repo.create_summary(
+            user_id=user_id,
+            summary_type="weekly_summary",
+            content=summary,
+            period_start=(datetime.utcnow() - timedelta(days=7)).date(),
+            period_end=datetime.utcnow().date(),
+        )
+
+        await self.memory_repo.deactivate_old_summaries(
+            user_id, "weekly_summary", keep_last=4
+        )
+
+        two_weeks_ago = datetime.utcnow() - timedelta(days=14)
+        await self.memory_repo.delete_interactions_before(user_id, two_weeks_ago)

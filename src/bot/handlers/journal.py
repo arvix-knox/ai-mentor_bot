@@ -1,208 +1,121 @@
 from aiogram import Router, F
 from aiogram.filters import Command
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.user import User
-from src.services.habit_service import HabitService
+from src.services.journal_service import JournalService
+from src.bot.keyboards.inline import journal_menu_keyboard, back_to_menu_keyboard
 
 router = Router()
 
 
-def habits_list_keyboard(habits: list) -> InlineKeyboardMarkup:
-    buttons = []
-    for habit in habits:
-        buttons.append([
-            InlineKeyboardButton(
-                text=f"{habit.emoji} {habit.name} (🔥{habit.current_streak})",
-                callback_data=f"habit_check:{habit.id}",
-            )
-        ])
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
+class JournalStates(StatesGroup):
+    waiting_title = State()
+    waiting_content = State()
+    waiting_search = State()
 
 
-@router.message(Command("habit"))
-async def cmd_habit(message: Message, session: AsyncSession, db_user: User):
-    text = message.text.strip()
-    parts = text.split(maxsplit=2)
-
-    if len(parts) < 2:
-        await message.answer(
-            "🔄 *Habit Tracker*\n\n"
-            "`/habit add <название>` — создать привычку\n"
-            "`/habit list` — список привычек\n"
-            "`/habit check <id>` — отметить выполнение\n"
-            "`/habit stats` — статистика за неделю\n"
-            "`/habit delete <id>` — удалить привычку"
-        )
-        return
-
-    action = parts[1].lower()
-    habit_svc = HabitService(session)
-
-    if action == "add" and len(parts) > 2:
-        name = parts[2].strip()
-        emoji = "✅"
-
-        if len(name) >= 2 and not name[0].isalnum():
-            emoji = name[0]
-            name = name[1:].strip()
-            if not name:
-                await message.answer("❌ Укажи название привычки")
-                return
-
-        result = await habit_svc.create_habit(
-            user_id=db_user.id,
-            name=name,
-            emoji=emoji,
-        )
-
-        await message.answer(
-            f"{result['emoji']} Привычка создана: *{result['name']}*\n\n"
-            f"Отмечай каждый день через /habit check {result['habit_id']}\n"
-            f"Или используй /habit list для быстрой отметки"
-        )
-
-    elif action == "list":
-        habits = await habit_svc.get_user_habits(db_user.id)
-
-        if not habits:
-            await message.answer(
-                "🔄 У тебя пока нет привычек.\n\n"
-                "Создай первую: `/habit add 📚 Читать документацию`"
-            )
-            return
-
-        lines = []
-        for h in habits:
-            streak_display = f"🔥{h.current_streak}d" if h.current_streak > 0 else "0d"
-            best_display = f"best: {h.best_streak}d"
-            lines.append(
-                f"{h.emoji} `#{h.id}` *{h.name}*\n"
-                f"   Streak: {streak_display} | {best_display} | "
-                f"Total: {h.total_completions}"
-            )
-
-        await message.answer(
-            "🔄 *Твои привычки:*\n\n" + "\n\n".join(lines) + "\n\n"
-            "Нажми кнопку для отметки ⬇️",
-            reply_markup=habits_list_keyboard(habits),
-        )
-
-    elif action == "check" and len(parts) > 2:
-        try:
-            habit_id = int(parts[2])
-        except ValueError:
-            await message.answer("❌ Неверный ID привычки")
-            return
-
-        result = await habit_svc.log_completion(db_user.id, habit_id)
-
-        if result.get("error"):
-            await message.answer(f"❌ {result['error']}")
-            return
-
-        if result.get("already_logged"):
-            await message.answer(
-                f"ℹ️ Уже отмечено сегодня! Streak: 🔥{result['streak']}d"
-            )
-            return
-
-        milestone_msg = ""
-        if result.get("streak_milestone"):
-            milestone_msg = (
-                f"\n\n🏆 *MILESTONE!* {result['streak_milestone']} дней подряд!"
-            )
-
-        await message.answer(
-            f"✅ Привычка отмечена!\n\n"
-            f"🔥 Streak: {result['streak']}d\n"
-            f"🏆 Best: {result['best_streak']}d\n"
-            f"📊 Total: {result['total_completions']}\n"
-            f"+{result['xp_earned']} XP ⭐"
-            f"{milestone_msg}"
-        )
-
-    elif action == "stats":
-        perf = await habit_svc.get_weekly_performance(db_user.id)
-
-        if not perf["habits"]:
-            await message.answer("🔄 Нет привычек для статистики.")
-            return
-
-        lines = []
-        for h in perf["habits"]:
-            filled = int(h["rate"] * 10)
-            bar = "▓" * filled + "░" * (10 - filled)
-            lines.append(
-                f"{h['emoji']} {h['name']}\n"
-                f"   [{bar}] {h['rate']:.0%} "
-                f"({h['completed']}/{h['possible']})\n"
-                f"   🔥 Streak: {h['streak']}d | Best: {h['best_streak']}d"
-            )
-
-        await message.answer(
-            f"📊 *Привычки за неделю*\n\n"
-            + "\n\n".join(lines)
-            + f"\n\n📈 Overall: {perf['overall_rate']:.0%} "
-            f"({perf['total_completed']}/{perf['total_possible']})"
-        )
-
-    elif action == "delete" and len(parts) > 2:
-        try:
-            habit_id = int(parts[2])
-        except ValueError:
-            await message.answer("❌ Неверный ID привычки")
-            return
-
-        from src.repositories.habit_repo import HabitRepository
-        habit_repo = HabitRepository(session)
-        habit = await habit_repo.get_by_id(habit_id)
-
-        if not habit or habit.user_id != db_user.id:
-            await message.answer("❌ Привычка не найдена")
-            return
-
-        await habit_repo.update(habit_id, is_active=False)
-        await message.answer(f"🗑 Привычка удалена: *{habit.name}*")
-
-    else:
-        await message.answer("❌ Неизвестная команда. Используй /habit для помощи.")
+@router.message(Command("journal"))
+async def cmd_journal(message: Message, session: AsyncSession, db_user: User):
+    await message.answer("📝 *Dev Journal*", reply_markup=journal_menu_keyboard())
 
 
-@router.callback_query(F.data.startswith("habit_check:"))
-async def callback_habit_check(callback: CallbackQuery, session: AsyncSession, db_user: User):
-    habit_id = int(callback.data.split(":")[1])
-    habit_svc = HabitService(session)
+@router.callback_query(F.data == "menu:journal")
+async def callback_journal_menu(callback: CallbackQuery):
+    await callback.message.edit_text("📝 *Dev Journal*", reply_markup=journal_menu_keyboard())
+    await callback.answer()
 
-    result = await habit_svc.log_completion(db_user.id, habit_id)
 
-    if result.get("error"):
-        await callback.answer(result["error"])
-        return
-
-    if result.get("already_logged"):
-        await callback.answer(f"Уже отмечено! Streak: 🔥{result['streak']}d")
-        return
-
-    milestone_msg = ""
-    if result.get("streak_milestone"):
-        milestone_msg = f"\n🏆 MILESTONE: {result['streak_milestone']}d!"
-
-    await callback.answer(
-        f"✅ Streak: 🔥{result['streak']}d | +{result['xp_earned']} XP"
-    )
-
-    habits = await habit_svc.get_user_habits(db_user.id)
-    lines = []
-    for h in habits:
-        streak_display = f"🔥{h.current_streak}d" if h.current_streak > 0 else "0d"
-        lines.append(
-            f"{h.emoji} `#{h.id}` *{h.name}* — {streak_display}"
-        )
-
+@router.callback_query(F.data == "journal:add")
+async def callback_journal_add(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(JournalStates.waiting_title)
     await callback.message.edit_text(
-        "🔄 *Твои привычки:*\n\n" + "\n".join(lines)
-        + f"{milestone_msg}\n\nНажми кнопку для отметки ⬇️",
-        reply_markup=habits_list_keyboard(habits),
+        "📝 *Новая запись*\n\nОтправь *заголовок*:"
     )
+    await callback.answer()
+
+
+@router.message(JournalStates.waiting_title)
+async def journal_title(message: Message, state: FSMContext):
+    await state.update_data(title=message.text.strip())
+    await state.set_state(JournalStates.waiting_content)
+    await message.answer(
+        "✏️ Теперь отправь *содержание*.\n\n"
+        "Используй Markdown и #теги:\n"
+        "`Изучил async/await в Python #python #async`"
+    )
+
+
+@router.message(JournalStates.waiting_content)
+async def journal_content(message: Message, session: AsyncSession, db_user: User, state: FSMContext):
+    data = await state.get_data()
+    journal_svc = JournalService(session)
+    result = await journal_svc.create_entry(
+        user_id=db_user.id,
+        title=data["title"],
+        content=message.text.strip(),
+    )
+    tags_str = " ".join(f"#{t}" for t in result["tags"]) if result["tags"] else ""
+    level_msg = "\n🎉 *LEVEL UP!*" if result.get("leveled_up") else ""
+    await message.answer(
+        f"📝 Записано: *{result['title']}*\n"
+        f"{tags_str}\n"
+        f"+{result['xp_earned']} XP ⭐{level_msg}",
+        reply_markup=journal_menu_keyboard(),
+    )
+    await state.clear()
+
+
+@router.callback_query(F.data == "journal:list")
+async def callback_journal_list(callback: CallbackQuery, session: AsyncSession, db_user: User):
+    journal_svc = JournalService(session)
+    entries = await journal_svc.get_entries(db_user.id, limit=10)
+    if not entries:
+        await callback.message.edit_text("📝 Журнал пуст", reply_markup=journal_menu_keyboard())
+        await callback.answer()
+        return
+    lines = []
+    for e in entries:
+        tags_str = " ".join(f"#{t}" for t in (e.tags or []))
+        date_str = e.created_at.strftime("%d.%m.%Y")
+        preview = e.content[:60].replace("\n", " ")
+        lines.append(f"📄 *{e.title}* — _{date_str}_\n   {preview}... {tags_str}")
+    await callback.message.edit_text(
+        "📝 *Последние записи:*\n\n" + "\n\n".join(lines),
+        reply_markup=journal_menu_keyboard(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "journal:search")
+async def callback_journal_search(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(JournalStates.waiting_search)
+    await callback.message.edit_text("🔍 Отправь поисковый запрос или #тег:")
+    await callback.answer()
+
+
+@router.message(JournalStates.waiting_search)
+async def journal_search(message: Message, session: AsyncSession, db_user: User, state: FSMContext):
+    query = message.text.strip()
+    journal_svc = JournalService(session)
+    if query.startswith("#"):
+        entries = await journal_svc.get_entries(db_user.id, tag=query.lstrip("#"))
+    else:
+        entries = await journal_svc.get_entries(db_user.id, query=query)
+    if not entries:
+        await message.answer(f"🔍 Ничего не найдено: _{query}_", reply_markup=journal_menu_keyboard())
+    else:
+        lines = [f"📄 *{e.title}* — _{e.created_at.strftime('%d.%m.%Y')}_" for e in entries]
+        await message.answer(
+            f"🔍 *Результаты:* _{query}_\n\n" + "\n".join(lines),
+            reply_markup=journal_menu_keyboard(),
+        )
+    await state.clear()
+
+
+@router.message(F.text == "📝 Журнал")
+async def reply_journal(message: Message):
+    await message.answer("📝 *Dev Journal*", reply_markup=journal_menu_keyboard())
