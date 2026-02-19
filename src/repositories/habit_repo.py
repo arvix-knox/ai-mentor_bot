@@ -23,6 +23,27 @@ class HabitRepository(BaseRepository):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
+    async def get_reminder_habits(
+        self,
+        remind_time: str,
+        weekday_index: int,
+    ) -> list[Habit]:
+        day_bit = 1 << weekday_index
+        stmt = (
+            select(Habit)
+            .where(
+                and_(
+                    Habit.is_active == True,
+                    Habit.remind_enabled == True,
+                    Habit.remind_time == remind_time,
+                )
+            )
+            .order_by(Habit.created_at.asc())
+        )
+        result = await self.session.execute(stmt)
+        habits = list(result.scalars().all())
+        return [h for h in habits if h.schedule_mask & day_bit]
+
     async def get_log(self, habit_id: int, log_date: date) -> HabitLog | None:
         stmt = select(HabitLog).where(
             and_(

@@ -28,6 +28,36 @@ class TaskRepository(BaseRepository):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
+    async def get_reminder_tasks(
+        self,
+        remind_time: str,
+        target_date: date,
+    ) -> list[Task]:
+        stmt = (
+            select(Task)
+            .where(
+                and_(
+                    Task.remind_enabled == True,
+                    Task.remind_time == remind_time,
+                    Task.status.in_(["todo", "in_progress"]),
+                    Task.deadline.is_(None) | (Task.deadline <= target_date),
+                )
+            )
+            .order_by(Task.priority.desc(), Task.created_at.asc())
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def count_completed_total(self, user_id: int) -> int:
+        stmt = select(func.count()).where(
+            and_(
+                Task.user_id == user_id,
+                Task.status == "done",
+            )
+        )
+        result = await self.session.execute(stmt)
+        return int(result.scalar() or 0)
+
     async def get_active_tasks(
         self, user_id: int, limit: int = 10
     ) -> list[Task]:
