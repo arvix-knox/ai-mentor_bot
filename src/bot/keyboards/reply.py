@@ -6,7 +6,7 @@ def main_reply_keyboard() -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(text="📋 Задачи"), KeyboardButton(text="🔄 Привычки")],
             [KeyboardButton(text="📝 Журнал"), KeyboardButton(text="🤖 AI")],
-            [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="📈 Обзор")],
+            [KeyboardButton(text="📊 Стата"), KeyboardButton(text="👤 Профиль")],
         ],
         resize_keyboard=True,
     )

@@ -15,17 +15,19 @@ router = Router()
 @router.message(CommandStart())
 async def cmd_start(message: Message, session: AsyncSession, db_user: User):
     level_info = GamificationService.format_level_progress(db_user.total_xp_earned)
+    has_stack = bool(db_user.tech_stack)
+    setup_hint = "" if has_stack else "\n\n💡 Настрой профиль: 👤 *Профиль*"
     await message.answer(
         f"👋 Привет, *{db_user.first_name}*!\n\n"
-        f"Я твой AI-наставник по программированию 🚀\n\n"
-        f"{level_info}",
+        f"Я твой AI-наставник 🚀\n\n"
+        f"{level_info}{setup_hint}",
         reply_markup=main_reply_keyboard(),
     )
     await message.answer("🏠 *Главное меню*", reply_markup=main_menu_keyboard())
 
 
 @router.callback_query(F.data == "menu:main")
-async def callback_main_menu(callback: CallbackQuery):
+async def cb_main(callback: CallbackQuery):
     try:
         await callback.message.edit_text("🏠 *Главное меню*", reply_markup=main_menu_keyboard())
     except TelegramBadRequest:
@@ -40,52 +42,60 @@ async def cmd_help(message: Message, **kwargs):
         "📋 `/task add Название #тег p:high`\n"
         "🔄 `/habit add 📚 Читать`\n"
         "📝 `/journal add`\n"
-        "🤖 `/ai Твой вопрос`\n"
-        "📊 `/stats` — статистика\n"
-        "📈 `/review` — обзор недели\n"
-        "⚙️ `/mode` — режим AI\n\n"
-        "Или используй кнопки 👇",
+        "🤖 `/ai Вопрос`\n"
+        "📊 `/stats` | 📈 `/review`\n"
+        "👤 `/profile` | ⚙️ `/settings`\n\n"
+        "Или кнопки 👇",
         reply_markup=main_menu_keyboard(),
     )
 
 
 @router.message(Command("stats"))
 async def cmd_stats(message: Message, session: AsyncSession, db_user: User):
-    await _show_stats(message, db_user)
+    await _send_stats(message, db_user)
 
 
 @router.callback_query(F.data == "menu:stats")
-async def callback_stats(callback: CallbackQuery, session: AsyncSession, db_user: User):
-    await _show_stats(callback.message, db_user, edit=True)
+async def cb_stats(callback: CallbackQuery, session: AsyncSession, db_user: User):
+    await _send_stats(callback.message, db_user, edit=True)
     await callback.answer()
 
 
-@router.message(F.text == "📊 Статистика")
+@router.message(F.text == "📊 Стата")
 async def reply_stats(message: Message, session: AsyncSession, db_user: User):
-    await _show_stats(message, db_user)
+    await _send_stats(message, db_user)
 
 
-async def _show_stats(message, db_user, edit=False):
-    level_info = GamificationService.format_level_progress(db_user.total_xp_earned)
-    d = db_user.discipline_score
-    d_emoji = "🟢" if d >= 70 else ("🟡" if d >= 40 else "🔴")
-    d_bar = "▓" * int(d / 10) + "░" * (10 - int(d / 10))
-    g = db_user.growth_score
-    g_emoji = "🟢" if g >= 70 else ("🟡" if g >= 40 else "🔴")
-    g_bar = "▓" * int(g / 10) + "░" * (10 - int(g / 10))
+async def _send_stats(msg, user, edit=False):
+    li = GamificationService.format_level_progress(user.total_xp_earned)
+    d = user.discipline_score
+    de = "🟢" if d >= 70 else ("🟡" if d >= 40 else "🔴")
+    db = "▓" * int(d / 10) + "░" * (10 - int(d / 10))
+    g = user.growth_score
+    ge = "🟢" if g >= 70 else ("🟡" if g >= 40 else "🔴")
+    gb = "▓" * int(g / 10) + "░" * (10 - int(g / 10))
+    import json
+    stack = []
+    try:
+        if user.tech_stack:
+            stack = json.loads(user.tech_stack)
+    except Exception:
+        pass
+    stack_text = ", ".join(stack) if stack else "не указан"
     text = (
         f"📊 *Статистика*\n\n"
-        f"{level_info}\n\n"
-        f"{d_emoji} Discipline [{d_bar}] {d:.0f}/100\n"
-        f"{g_emoji} Growth [{g_bar}] {g:.0f}/100\n\n"
-        f"🤖 Режим: *{db_user.ai_mode}*\n"
-        f"📅 С нами с {db_user.created_at.strftime('%d.%m.%Y')}"
+        f"{li}\n\n"
+        f"{de} Discipline [{db}] {d:.0f}/100\n"
+        f"{ge} Growth [{gb}] {g:.0f}/100\n\n"
+        f"💻 Стек: {stack_text}\n"
+        f"🤖 Режим: *{user.ai_mode}*\n"
+        f"📅 С нами с {user.created_at.strftime('%d.%m.%Y')}"
     )
     kb = back_keyboard("menu:main")
     if edit:
         try:
-            await message.edit_text(text, reply_markup=kb)
+            await msg.edit_text(text, reply_markup=kb)
         except TelegramBadRequest:
             pass
     else:
-        await message.answer(text, reply_markup=kb)
+        await msg.answer(text, reply_markup=kb)
