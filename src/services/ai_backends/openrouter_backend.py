@@ -13,7 +13,7 @@ class OpenRouterBackend(BaseAIBackend):
         self.api_key = settings.OPENROUTER_API_KEY
         self.base_url = "https://openrouter.ai/api/v1/chat/completions"
         self.model = "meta-llama/llama-3.1-8b-instruct:free"
-        self.client = httpx.AsyncClient(timeout=60.0)
+        self.client = httpx.AsyncClient(timeout=35.0)
 
     async def generate(
         self,
@@ -50,7 +50,7 @@ class OpenRouterBackend(BaseAIBackend):
                     "model": self.model,
                     "messages": messages,
                     "max_tokens": max_tokens,
-                    "temperature": 0.7,
+                    "temperature": 0.45,
                 },
             )
             response.raise_for_status()

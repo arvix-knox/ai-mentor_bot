@@ -1,5 +1,5 @@
 from datetime import datetime, date
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.task import Task, TaskLog
@@ -40,7 +40,7 @@ class TaskRepository(BaseRepository):
                     Task.remind_enabled == True,
                     Task.remind_time == remind_time,
                     Task.status.in_(["todo", "in_progress"]),
-                    Task.deadline.is_(None) | (Task.deadline <= target_date),
+                    or_(Task.deadline.is_(None), Task.deadline <= target_date),
                 )
             )
             .order_by(Task.priority.desc(), Task.created_at.asc())

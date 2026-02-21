@@ -8,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.user import User
 from src.services.journal_service import JournalService
+from src.services.ai_service import AIService
+from src.repositories.journal_repo import JournalRepository
 from src.bot.keyboards.inline import journal_menu_keyboard, journal_entry_keyboard, journal_list_keyboard, back_keyboard
 
 router = Router()
@@ -54,7 +56,10 @@ async def st_content(message: Message, session: AsyncSession, db_user: User, sta
     r = await svc.create_entry(user_id=db_user.id, title=d["title"], content=message.text.strip())
     tags = " ".join(f"#{t}" for t in r["tags"]) if r["tags"] else ""
     lm = "\n🎉 *LEVEL UP!*" if r.get("leveled_up") else ""
-    await message.answer(f"📝 *{r['title']}*\n{tags}\n+{r['xp_earned']} XP ⭐{lm}", reply_markup=journal_menu_keyboard())
+    await message.answer(
+        f"📝 *{r['title']}*\n{tags}\n+{r['xp_earned']} XP ⭐{lm}",
+        reply_markup=journal_entry_keyboard(r["entry_id"]),
+    )
     await state.clear()
 
 
@@ -106,6 +111,30 @@ async def cb_related(callback: CallbackQuery, session: AsyncSession, db_user: Us
     except TelegramBadRequest:
         pass
     await callback.answer()
+
+
+@router.callback_query(F.data.startswith("journal:ai_check:"))
+async def cb_ai_check(callback: CallbackQuery, session: AsyncSession, db_user: User):
+    eid = int(callback.data.split(":")[2])
+    repo = JournalRepository(session)
+    entry = await repo.get_by_id(eid)
+    if not entry or entry.user_id != db_user.id:
+        await callback.answer("Запись не найдена")
+        return
+    settings_data = db_user.get_settings()
+    if not settings_data.get("ai_journal_review", True):
+        await callback.answer("AI-проверка журнала выключена в настройках")
+        return
+    await callback.answer("Проверяю...")
+    ai = AIService(session)
+    rewritten = await ai.rewrite_journal_entry(entry.content)
+    await repo.update(eid, content=rewritten)
+    tags = " ".join(f"#{t}" for t in (entry.tags or []))
+    text = f"📝 *{entry.title}*\n_{entry.created_at.strftime('%d.%m.%Y %H:%M')}_\n{tags}\n\n{rewritten[:3500]}"
+    try:
+        await callback.message.edit_text(text, reply_markup=journal_entry_keyboard(eid))
+    except TelegramBadRequest:
+        pass
 
 
 @router.callback_query(F.data.startswith("journal:del:"))

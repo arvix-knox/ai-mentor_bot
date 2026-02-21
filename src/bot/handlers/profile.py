@@ -1,4 +1,5 @@
 import json
+import re
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery
@@ -11,12 +12,15 @@ from src.models.user import User
 from src.repositories.user_repo import UserRepository
 from src.services.gamification_service import GamificationService
 from src.services.analytics_service import AnalyticsService
+from src.services.achievement_service import AchievementService
+from src.services.data_cleanup_service import DataCleanupService
 from src.bot.keyboards.inline import (
     profile_keyboard, stack_select_keyboard, goals_select_keyboard,
     knowledge_level_keyboard, settings_keyboard, ai_mode_keyboard,
     notification_settings_keyboard, notif_time_period_keyboard,
     notif_exact_time_keyboard, timezone_keyboard, back_keyboard,
-    main_menu_keyboard,
+    main_menu_keyboard, ai_permissions_keyboard, data_cleanup_keyboard,
+    history_period_keyboard,
 )
 
 router = Router()
@@ -40,6 +44,8 @@ DEFAULT_NOTIF = {
     "morning": True, "evening": True, "motivation": True,
     "streak": True, "weekly": True,
     "morning_time": "08:00", "evening_time": "21:00",
+    "task_remind_default": True, "habit_remind_default": True,
+    "remind_text_template": "🔔 Пора: {name}",
 }
 
 
@@ -47,6 +53,8 @@ class ProfileStates(StatesGroup):
     waiting_name = State()
     waiting_custom_stack = State()
     waiting_custom_goal = State()
+    waiting_custom_notif_time = State()
+    waiting_remind_template = State()
 
 
 def _get_user_data(user, field):
@@ -60,18 +68,15 @@ def _get_user_data(user, field):
 
 
 def _get_notif_settings(user):
-    data = _get_user_data(user, "goals")
-    if isinstance(data, dict) and "notifications" in data:
-        return {**DEFAULT_NOTIF, **data["notifications"]}
-    return dict(DEFAULT_NOTIF)
+    data = user.get_settings()
+    notif = data.get("notifications", {})
+    return {**DEFAULT_NOTIF, **notif}
 
 
-def _save_notif_settings(user, notif, user_repo, user_id):
-    data = _get_user_data(user, "goals")
-    if not isinstance(data, dict):
-        data = {}
-    data["notifications"] = notif
-    return data
+async def _save_settings(session: AsyncSession, user: User, settings_data: dict):
+    repo = UserRepository(session)
+    await repo.update(user.id, settings_json=user.save_settings(settings_data))
+    user.settings_json = user.save_settings(settings_data)
 
 
 @router.message(Command("profile"))
@@ -108,7 +113,7 @@ async def _show_profile(msg, user, edit=False):
     level_info = GamificationService.format_level_progress(user.total_xp_earned)
     text = (
         f"👤 *Профиль*\n\n"
-        f"📛 Имя: *{user.first_name}*\n"
+        f"📛 Имя: *{user.get_display_name()}*\n"
         f"💻 Стек: {stack_text}\n"
         f"🎯 Цели: {goals_text}\n"
         f"📚 Уровень: {klevel_text}\n\n"
@@ -136,8 +141,8 @@ async def cb_edit_name(callback: CallbackQuery, state: FSMContext):
 async def name_input(message: Message, session: AsyncSession, db_user: User, state: FSMContext):
     name = message.text.strip()[:50]
     repo = UserRepository(session)
-    await repo.update(db_user.id, first_name=name)
-    db_user.first_name = name
+    await repo.update(db_user.id, display_name=name)
+    db_user.display_name = name
     await message.answer(f"✅ Имя: *{name}*")
     await _show_profile(message, db_user)
     await state.clear()
@@ -244,6 +249,23 @@ async def cb_edit_level(callback: CallbackQuery):
     await callback.answer()
 
 
+@router.callback_query(F.data == "profile:achievements")
+async def cb_profile_achievements(callback: CallbackQuery, session: AsyncSession, db_user: User):
+    svc = AchievementService(session)
+    await svc.evaluate(db_user.id)
+    items = await svc.get_user_achievements(db_user.id)
+    if not items:
+        text = "🏆 Достижений пока нет. Выполняй задачи, привычки и веди журнал."
+    else:
+        lines = [f"{a.emoji} *{a.name}* — {a.description}" for a in items[:30]]
+        text = "🏆 *Твои достижения:*\n\n" + "\n".join(lines)
+    try:
+        await callback.message.edit_text(text, reply_markup=profile_keyboard())
+    except TelegramBadRequest:
+        pass
+    await callback.answer()
+
+
 @router.callback_query(F.data.startswith("klevel:"))
 async def cb_klevel(callback: CallbackQuery, session: AsyncSession, db_user: User):
     level = callback.data.split(":")[1]
@@ -329,13 +351,9 @@ async def cb_notif_toggle(callback: CallbackQuery, session: AsyncSession, db_use
     key = callback.data.split(":")[2]
     notif = _get_notif_settings(db_user)
     notif[key] = not notif.get(key, True)
-    goals_data = _get_user_data(db_user, "goals")
-    if not isinstance(goals_data, dict):
-        goals_data = {}
-    goals_data["notifications"] = notif
-    repo = UserRepository(session)
-    await repo.update(db_user.id, goals=json.dumps(goals_data))
-    db_user.goals = json.dumps(goals_data)
+    settings_data = db_user.get_settings()
+    settings_data["notifications"] = notif
+    await _save_settings(session, db_user, settings_data)
     status = "✅ Вкл" if notif[key] else "❌ Выкл"
     await callback.answer(f"{key}: {status}")
     try:
@@ -370,19 +388,24 @@ async def cb_notif_time_period(callback: CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("notif_set:"))
-async def cb_notif_set_time(callback: CallbackQuery, session: AsyncSession, db_user: User):
-    parts = callback.data.split(":")
+async def cb_notif_set_time(callback: CallbackQuery, session: AsyncSession, db_user: User, state: FSMContext):
+    parts = callback.data.split(":", 2)
     period = parts[1]
     time_val = parts[2]
+    if time_val == "custom":
+        await callback.answer("Отправь время в формате HH:MM")
+        await state.update_data(custom_notif_period=period)
+        await state.set_state(ProfileStates.waiting_custom_notif_time)
+        await callback.message.edit_text(f"🕐 Отправь {period} время в формате HH:MM")
+        return
+    if not re.fullmatch(r"([01]\d|2[0-3]):([0-5]\d)", time_val):
+        await callback.answer("Формат HH:MM")
+        return
     notif = _get_notif_settings(db_user)
     notif[f"{period}_time"] = time_val
-    goals_data = _get_user_data(db_user, "goals")
-    if not isinstance(goals_data, dict):
-        goals_data = {}
-    goals_data["notifications"] = notif
-    repo = UserRepository(session)
-    await repo.update(db_user.id, goals=json.dumps(goals_data))
-    db_user.goals = json.dumps(goals_data)
+    settings_data = db_user.get_settings()
+    settings_data["notifications"] = notif
+    await _save_settings(session, db_user, settings_data)
     await callback.answer(f"✅ {period}: {time_val}")
     try:
         await callback.message.edit_text(
@@ -390,6 +413,161 @@ async def cb_notif_set_time(callback: CallbackQuery, session: AsyncSession, db_u
             f"🌅 Утро: {notif.get('morning_time', '08:00')}\n"
             f"🌙 Вечер: {notif.get('evening_time', '21:00')}",
             reply_markup=notification_settings_keyboard(notif),
+        )
+    except TelegramBadRequest:
+        pass
+
+
+@router.callback_query(F.data == "settings:ai_permissions")
+async def cb_ai_permissions(callback: CallbackQuery, db_user: User):
+    settings_data = db_user.get_settings()
+    perms = settings_data.get("ai_permissions", {})
+    try:
+        await callback.message.edit_text(
+            "🧠 *Права AI*\n\nВыбери, к чему AI имеет доступ:",
+            reply_markup=ai_permissions_keyboard(perms),
+        )
+    except TelegramBadRequest:
+        pass
+    await callback.answer()
+
+
+@router.message(ProfileStates.waiting_custom_notif_time)
+async def st_custom_notif_time(message: Message, session: AsyncSession, db_user: User, state: FSMContext):
+    time_val = (message.text or "").strip()
+    if not re.fullmatch(r"([01]\d|2[0-3]):([0-5]\d)", time_val):
+        await message.answer("❌ Неверный формат. Пример: 08:30")
+        return
+    data = await state.get_data()
+    period = data.get("custom_notif_period", "morning")
+    notif = _get_notif_settings(db_user)
+    notif[f"{period}_time"] = time_val
+    settings_data = db_user.get_settings()
+    settings_data["notifications"] = notif
+    await _save_settings(session, db_user, settings_data)
+    await state.clear()
+    await message.answer(
+        f"✅ {period}: {time_val}",
+        reply_markup=notification_settings_keyboard(notif),
+    )
+
+
+@router.callback_query(F.data.startswith("ai_perm:toggle:"))
+async def cb_ai_perm_toggle(callback: CallbackQuery, session: AsyncSession, db_user: User):
+    key = callback.data.split(":")[2]
+    settings_data = db_user.get_settings()
+    perms = settings_data.get("ai_permissions", {})
+    perms[key] = not perms.get(key, True)
+    settings_data["ai_permissions"] = perms
+    await _save_settings(session, db_user, settings_data)
+    await callback.answer(f"{key}: {'ON' if perms[key] else 'OFF'}")
+    try:
+        await callback.message.edit_text(
+            "🧠 *Права AI*\n\nВыбери, к чему AI имеет доступ:",
+            reply_markup=ai_permissions_keyboard(perms),
+        )
+    except TelegramBadRequest:
+        pass
+
+
+@router.callback_query(F.data == "settings:ai_daily_brief")
+async def cb_ai_daily_brief(callback: CallbackQuery, session: AsyncSession, db_user: User):
+    settings_data = db_user.get_settings()
+    current = bool(settings_data.get("ai_daily_brief", True))
+    settings_data["ai_daily_brief"] = not current
+    await _save_settings(session, db_user, settings_data)
+    await callback.answer("✅ Обновлено")
+    try:
+        await callback.message.edit_text(
+            f"🧾 AI ежедневка: {'✅ включена' if settings_data['ai_daily_brief'] else '❌ выключена'}",
+            reply_markup=settings_keyboard(),
+        )
+    except TelegramBadRequest:
+        pass
+
+
+@router.callback_query(F.data == "settings:ai_journal_review")
+async def cb_ai_journal_review(callback: CallbackQuery, session: AsyncSession, db_user: User):
+    settings_data = db_user.get_settings()
+    current = bool(settings_data.get("ai_journal_review", True))
+    settings_data["ai_journal_review"] = not current
+    await _save_settings(session, db_user, settings_data)
+    await callback.answer("✅ Обновлено")
+    try:
+        await callback.message.edit_text(
+            f"📔 AI проверка журнала: {'✅ включена' if settings_data['ai_journal_review'] else '❌ выключена'}",
+            reply_markup=settings_keyboard(),
+        )
+    except TelegramBadRequest:
+        pass
+
+
+@router.callback_query(F.data == "settings:remind_template")
+async def cb_remind_template(callback: CallbackQuery, state: FSMContext, db_user: User):
+    template = db_user.get_settings().get("notifications", {}).get("remind_text_template", "🔔 Пора: {name}")
+    await state.set_state(ProfileStates.waiting_remind_template)
+    await callback.message.edit_text(
+        "✍️ Отправь шаблон напоминания.\n"
+        "Можно использовать `{name}`.\n\n"
+        f"Текущий: `{template}`"
+    )
+    await callback.answer()
+
+
+@router.message(ProfileStates.waiting_remind_template)
+async def st_remind_template(message: Message, session: AsyncSession, db_user: User, state: FSMContext):
+    template = (message.text or "").strip()[:200]
+    if "{name}" not in template:
+        template += " {name}"
+    settings_data = db_user.get_settings()
+    notif = settings_data.get("notifications", {})
+    notif["remind_text_template"] = template
+    settings_data["notifications"] = notif
+    await _save_settings(session, db_user, settings_data)
+    await state.clear()
+    await message.answer("✅ Шаблон обновлен", reply_markup=settings_keyboard())
+
+
+@router.callback_query(F.data == "settings:data_cleanup")
+async def cb_data_cleanup(callback: CallbackQuery):
+    try:
+        await callback.message.edit_text("🗑 *Очистка данных*", reply_markup=data_cleanup_keyboard())
+    except TelegramBadRequest:
+        pass
+    await callback.answer()
+
+
+@router.callback_query(F.data == "cleanup:history")
+async def cb_cleanup_history(callback: CallbackQuery):
+    try:
+        await callback.message.edit_text("🧠 *Удалить историю за период:*", reply_markup=history_period_keyboard())
+    except TelegramBadRequest:
+        pass
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("cleanup:history:"))
+async def cb_cleanup_history_period(callback: CallbackQuery, session: AsyncSession, db_user: User):
+    period = callback.data.split(":")[2]
+    result = await DataCleanupService(session).cleanup_history(db_user.id, period)
+    await callback.answer("✅ История очищена")
+    try:
+        await callback.message.edit_text(
+            f"🧠 Очищено: AI={result.get('deleted_ai', 0)}, journal={result.get('deleted_journal', 0)}",
+            reply_markup=settings_keyboard(),
+        )
+    except TelegramBadRequest:
+        pass
+
+
+@router.callback_query(F.data == "cleanup:profile")
+async def cb_cleanup_profile(callback: CallbackQuery, session: AsyncSession, db_user: User):
+    await DataCleanupService(session).delete_profile(db_user.id)
+    await callback.answer("Профиль удален")
+    try:
+        await callback.message.edit_text(
+            "🗑 Профиль удален. Напиши /start, чтобы создать заново.",
+            reply_markup=main_menu_keyboard(),
         )
     except TelegramBadRequest:
         pass

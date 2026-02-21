@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.user import User
 from src.services.gamification_service import GamificationService
-from src.bot.keyboards.inline import main_menu_keyboard, back_keyboard
+from src.bot.keyboards.inline import main_menu_keyboard, back_keyboard, webapp_open_keyboard
 from src.bot.keyboards.reply import main_reply_keyboard
 
 router = Router()
@@ -18,12 +18,13 @@ async def cmd_start(message: Message, session: AsyncSession, db_user: User):
     has_stack = bool(db_user.tech_stack)
     setup_hint = "" if has_stack else "\n\n💡 Настрой профиль: 👤 *Профиль*"
     await message.answer(
-        f"👋 Привет, *{db_user.first_name}*!\n\n"
+        f"👋 Привет, *{db_user.get_display_name()}*!\n\n"
         f"Я твой AI-наставник 🚀\n\n"
         f"{level_info}{setup_hint}",
         reply_markup=main_reply_keyboard(),
     )
     await message.answer("🏠 *Главное меню*", reply_markup=main_menu_keyboard())
+    await message.answer("🌐 Открой web-приложение для полного функционала:", reply_markup=webapp_open_keyboard())
 
 
 @router.callback_query(F.data == "menu:main")
@@ -43,11 +44,19 @@ async def cmd_help(message: Message, **kwargs):
         "🔄 `/habit add 📚 Читать`\n"
         "📝 `/journal add`\n"
         "🤖 `/ai Вопрос`\n"
+        "🌐 `/webapp`\n"
+        "🎓 `/learning`\n"
+        "🎵 `/playlist`\n"
         "📊 `/stats` | 📈 `/review`\n"
         "👤 `/profile` | ⚙️ `/settings`\n\n"
         "Или кнопки 👇",
         reply_markup=main_menu_keyboard(),
     )
+
+
+@router.message(Command("webapp"))
+async def cmd_webapp(message: Message):
+    await message.answer("🌐 Открой Web App:", reply_markup=webapp_open_keyboard())
 
 
 @router.message(Command("stats"))

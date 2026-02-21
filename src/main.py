@@ -6,6 +6,7 @@ from src.bot.loader import bot, dp, setup_routers
 from src.bot.middlewares.db_session import DbSessionMiddleware
 from src.bot.middlewares.auth import AuthMiddleware
 from src.bot.middlewares.throttling import ThrottlingMiddleware
+from src.core.scheduler import reminder_scheduler
 
 logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL),
@@ -24,6 +25,7 @@ async def main():
     dp.message.middleware(ThrottlingMiddleware())
 
     setup_routers()
+    reminder_scheduler.start()
 
     await bot.delete_webhook(drop_pending_updates=True)
     logger.info("Bot is running in polling mode")

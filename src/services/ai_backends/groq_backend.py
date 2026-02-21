@@ -13,7 +13,7 @@ class GroqBackend(BaseAIBackend):
         self.api_key = settings.GROQ_API_KEY
         self.base_url = "https://api.groq.com/openai/v1/chat/completions"
         self.model = "llama-3.1-8b-instant"
-        self.client = httpx.AsyncClient(timeout=30.0)
+        self.client = httpx.AsyncClient(timeout=20.0)
 
     async def generate(
         self,
@@ -49,7 +49,7 @@ class GroqBackend(BaseAIBackend):
                     "model": self.model,
                     "messages": messages,
                     "max_tokens": max_tokens,
-                    "temperature": 0.7,
+                    "temperature": 0.45,
                     "top_p": 0.9,
                 },
             )

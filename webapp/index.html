@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mentor Control Room</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/webapp/assets/css/app.css" />
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+  <div class="bg-noise"></div>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-badge">M</div>
+        <div>
+          <h1>Mentor Room</h1>
+          <p id="userCaption">загрузка...</p>
+        </div>
+      </div>
+      <nav class="nav">
+        <button class="nav-btn active" data-tab="dashboard">Дашборд</button>
+        <button class="nav-btn" data-tab="tasks">Задачи</button>
+        <button class="nav-btn" data-tab="habits">Привычки</button>
+        <button class="nav-btn" data-tab="mentor">ИИ Ментор</button>
+        <button class="nav-btn" data-tab="learning">Обучение</button>
+        <button class="nav-btn" data-tab="playlist">Плейлисты</button>
+        <button class="nav-btn" data-tab="settings">Настройки</button>
+      </nav>
+      <div class="sidebar-foot">
+        <small>Telegram Web App</small>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <h2 id="mentorHeader">Железный ментор</h2>
+          <p id="mentorSubtitle">дисциплина, фокус, действие</p>
+        </div>
+        <button id="refreshBtn" class="pill">Обновить</button>
+      </header>
+
+      <section class="tab active" id="tab-dashboard">
+        <div class="grid stats-grid">
+          <article class="card stat">
+            <span>Уровень</span>
+            <strong id="statLevel">-</strong>
+          </article>
+          <article class="card stat">
+            <span>XP</span>
+            <strong id="statXp">-</strong>
+          </article>
+          <article class="card stat">
+            <span>Discipline</span>
+            <strong id="statDiscipline">-</strong>
+          </article>
+          <article class="card stat">
+            <span>Growth</span>
+            <strong id="statGrowth">-</strong>
+          </article>
+        </div>
+
+        <div class="grid two">
+          <article class="card">
+            <div class="card-head">
+              <h3>План на сегодня</h3>
+              <button id="todayPlanBtn" class="pill secondary">Собрать</button>
+            </div>
+            <pre id="todayPlan" class="plan">Нажми "Собрать"</pre>
+          </article>
+
+          <article class="card">
+            <h3>Прогресс сегодня</h3>
+            <div class="columns">
+              <div>
+                <h4>Не сделано</h4>
+                <ul id="todoToday" class="list"></ul>
+              </div>
+              <div>
+                <h4>Сделано</h4>
+                <ul id="doneToday" class="list"></ul>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <article class="card">
+          <h3>Достижения</h3>
+          <div id="achievements" class="chips"></div>
+        </article>
+      </section>
+
+      <section class="tab" id="tab-tasks">
+        <div class="grid two">
+          <article class="card">
+            <h3>Новая задача</h3>
+            <form id="taskForm" class="form">
+              <input name="title" placeholder="Название задачи" required />
+              <div class="row">
+                <select name="priority">
+                  <option value="low">Low</option>
+                  <option value="medium" selected>Medium</option>
+                  <option value="high">High</option>
+                  <option value="critical">Critical</option>
+                </select>
+                <input type="date" name="deadline" />
+              </div>
+              <div class="row">
+                <select name="recurrence_type">
+                  <option value="">Без повторения</option>
+                  <option value="daily">Каждый день</option>
+                  <option value="weekly">Каждую неделю</option>
+                  <option value="monthly">Каждый месяц</option>
+                  <option value="on_date">Конкретная дата</option>
+                </select>
+                <input type="date" name="recurrence_date" />
+              </div>
+              <div class="row">
+                <input type="time" name="remind_time" />
+                <input name="remind_text" placeholder="Текст напоминания" />
+              </div>
+              <button class="pill" type="submit">Создать задачу</button>
+            </form>
+          </article>
+
+          <article class="card">
+            <h3>Полезная задача (быстро)</h3>
+            <form id="quickTaskForm" class="form">
+              <input name="title" placeholder="Что полезного ты сделал?" required />
+              <select name="difficulty">
+                <option value="low">Легко</option>
+                <option value="medium" selected>Средне</option>
+                <option value="high">Сложно</option>
+                <option value="critical">Очень сложно</option>
+              </select>
+              <button class="pill secondary" type="submit">Начислить XP</button>
+            </form>
+          </article>
+        </div>
+        <article class="card">
+          <h3>Список задач</h3>
+          <div id="tasksList" class="stack"></div>
+        </article>
+      </section>
+
+      <section class="tab" id="tab-habits">
+        <div class="grid two">
+          <article class="card">
+            <h3>Новая привычка</h3>
+            <form id="habitForm" class="form">
+              <div class="row">
+                <input name="emoji" placeholder="✅" value="✅" />
+                <input name="name" placeholder="Название привычки" required />
+              </div>
+              <div class="row">
+                <input type="time" name="remind_time" value="21:00" />
+                <input name="remind_text" placeholder="Текст напоминания" />
+              </div>
+              <button class="pill" type="submit">Создать привычку</button>
+            </form>
+          </article>
+          <article class="card">
+            <h3>Сегодняшние привычки</h3>
+            <div id="habitsList" class="stack"></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="tab" id="tab-mentor">
+        <div class="grid two">
+          <article class="card">
+            <h3>Настройка ментора</h3>
+            <form id="mentorForm" class="form">
+              <input name="mentor_name" placeholder="Имя ментора" />
+              <select name="mentor_persona">
+                <option value="goggins">Goggins discipline</option>
+                <option value="strict">Strict</option>
+                <option value="adaptive">Adaptive</option>
+                <option value="soft">Soft</option>
+              </select>
+              <button class="pill" type="submit">Сохранить</button>
+            </form>
+          </article>
+          <article class="card">
+            <h3>Чат с ментором</h3>
+            <div id="chatLog" class="chat-log"></div>
+            <form id="chatForm" class="chat-form">
+              <input name="message" placeholder="Спроси: что на сегодня?" required />
+              <button class="pill secondary" type="submit">Отправить</button>
+            </form>
+          </article>
+        </div>
+      </section>
+
+      <section class="tab" id="tab-learning">
+        <div class="grid two">
+          <article class="card">
+            <h3>Добавить ресурс</h3>
+            <form id="learningForm" class="form">
+              <select name="resource_type">
+                <option value="article">Статья</option>
+                <option value="video">Видео</option>
+                <option value="course">Курс</option>
+                <option value="summary">Краткое объяснение</option>
+              </select>
+              <input name="title" placeholder="Название" required />
+              <input name="topic" placeholder="Тема (например FastAPI)" />
+              <input name="url" placeholder="Ссылка" />
+              <button class="pill" type="submit">Сохранить</button>
+            </form>
+          </article>
+          <article class="card">
+            <h3>Подбор по теме</h3>
+            <form id="suggestForm" class="form">
+              <input name="topic" placeholder="Тема для подборки" required />
+              <button class="pill secondary" type="submit">Подобрать</button>
+            </form>
+            <div id="suggestions" class="stack"></div>
+          </article>
+        </div>
+        <article class="card">
+          <h3>Мои материалы</h3>
+          <div id="learningList" class="stack"></div>
+        </article>
+      </section>
+
+      <section class="tab" id="tab-playlist">
+        <div class="grid two">
+          <article class="card">
+            <h3>Новый плейлист</h3>
+            <form id="playlistForm" class="form">
+              <div class="row">
+                <input name="emoji" value="🎵" />
+                <input name="name" placeholder="Название плейлиста" required />
+              </div>
+              <button class="pill" type="submit">Создать</button>
+            </form>
+            <div id="playlistList" class="stack"></div>
+          </article>
+          <article class="card">
+            <h3>Треки плейлиста</h3>
+            <form id="trackForm" class="form">
+              <input name="title" placeholder="Название трека" required />
+              <input name="performer" placeholder="Исполнитель" />
+              <input name="url" placeholder="Ссылка/ID трека" />
+              <button class="pill secondary" type="submit">Добавить</button>
+            </form>
+            <div id="trackList" class="stack"></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="tab" id="tab-settings">
+        <div class="grid two">
+          <article class="card">
+            <h3>Права ИИ</h3>
+            <div id="aiPerms" class="stack"></div>
+          </article>
+          <article class="card">
+            <h3>Очистка данных</h3>
+            <div class="stack">
+              <button class="pill warning" data-cleanup-history="day">Удалить историю за день</button>
+              <button class="pill warning" data-cleanup-history="week">Удалить историю за неделю</button>
+              <button class="pill warning" data-cleanup-history="month">Удалить историю за месяц</button>
+              <button class="pill warning" data-cleanup-history="year">Удалить историю за год</button>
+              <button class="pill danger" id="deleteProfileBtn">Удалить профиль полностью</button>
+            </div>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast"></div>
+  <script type="module" src="/webapp/assets/js/app.js"></script>
+</body>
+</html>

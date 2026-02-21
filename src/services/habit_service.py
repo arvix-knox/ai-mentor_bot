@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.repositories.habit_repo import HabitRepository
 from src.services.gamification_service import GamificationService
+from src.services.achievement_service import AchievementService
 
 
 STREAK_MILESTONES = {7: 50, 14: 100, 30: 250, 60: 500, 100: 1000}
@@ -13,6 +14,7 @@ class HabitService:
         self.session = session
         self.habit_repo = HabitRepository(session)
         self.gamification = GamificationService(session)
+        self.achievement_service = AchievementService(session)
 
     async def create_habit(
         self,
@@ -20,13 +22,20 @@ class HabitService:
         name: str,
         emoji: str = "✅",
         description: str | None = None,
+        remind_enabled: bool = True,
+        remind_time: str | None = "21:00",
+        remind_text: str | None = None,
     ) -> dict:
         habit = await self.habit_repo.create(
             user_id=user_id,
             name=name,
             emoji=emoji,
             description=description,
+            remind_enabled=remind_enabled,
+            remind_time=remind_time,
+            remind_text=remind_text,
         )
+        await self.achievement_service.evaluate(user_id)
         return {
             "habit_id": habit.id,
             "name": habit.name,
@@ -86,6 +95,8 @@ class HabitService:
                 description=f"🔥 {new_streak}-day streak on {habit.name}!",
             )
             xp_earned += bonus
+
+        await self.achievement_service.evaluate(user_id)
 
         return {
             "streak": new_streak,

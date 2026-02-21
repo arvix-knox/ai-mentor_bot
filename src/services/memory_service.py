@@ -30,7 +30,7 @@ class MemoryService:
             f"=== RECENT CONVERSATION ===\n{session_block}"
         )
 
-        return self._truncate_context(context, max_tokens=1500)
+        return self._truncate_context(context, max_tokens=900)
 
     async def _build_profile_block(self, user_id: int) -> str:
         user = await self.user_repo.get_by_id(user_id)
@@ -53,7 +53,7 @@ class MemoryService:
         goals_str = ", ".join(goals) if goals else "Not set"
 
         return (
-            f"Name: {user.first_name}\n"
+            f"Name: {user.get_display_name()}\n"
             f"Level: {user.level} (XP: {user.xp})\n"
             f"Tech Stack: {tech_str}\n"
             f"Goals: {goals_str}\n"

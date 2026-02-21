@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.repositories.task_repo import TaskRepository
@@ -131,12 +131,11 @@ class TaskService:
         next_recur_date = task.recurrence_date
 
         if task.recurrence_type == "daily":
-            next_deadline = base_date.replace() + (date.today() - date.today())  # keep type hint
-            next_deadline = base_date.fromordinal(base_date.toordinal() + 1)
+            next_deadline = base_date + timedelta(days=1)
         elif task.recurrence_type == "weekly":
-            next_deadline = base_date.fromordinal(base_date.toordinal() + 7)
+            next_deadline = base_date + timedelta(days=7)
         elif task.recurrence_type == "monthly":
-            next_deadline = base_date.fromordinal(base_date.toordinal() + 30)
+            next_deadline = base_date + timedelta(days=30)
         elif task.recurrence_type == "on_date":
             if task.recurrence_date:
                 next_deadline = task.recurrence_date

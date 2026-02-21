@@ -15,6 +15,7 @@ class Settings(BaseSettings):
 
     LOG_LEVEL: str = "INFO"
     TIMEZONE: str = "Europe/Moscow"
+    WEBAPP_URL: str = "https://example.com/webapp"
 
     @property
     def allowed_ids(self) -> set[int]:

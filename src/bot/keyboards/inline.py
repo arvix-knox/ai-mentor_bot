@@ -1,4 +1,6 @@
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+
+from src.config import settings
 
 
 def main_menu_keyboard() -> InlineKeyboardMarkup:
@@ -23,6 +25,13 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="👤 Профиль", callback_data="menu:profile"),
             InlineKeyboardButton(text="⚙️ Настройки", callback_data="menu:settings"),
         ],
+    ])
+
+
+def webapp_open_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🌐 Открыть Web App", web_app=WebAppInfo(url=settings.WEBAPP_URL))],
+        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="menu:main")],
     ])
 
 
@@ -248,6 +257,9 @@ def journal_menu_keyboard() -> InlineKeyboardMarkup:
 
 def journal_entry_keyboard(entry_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🧠 Проверить AI", callback_data=f"journal:ai_check:{entry_id}"),
+        ],
         [
             InlineKeyboardButton(text="🔗 Связанные", callback_data=f"journal:related:{entry_id}"),
             InlineKeyboardButton(text="🗑 Удалить", callback_data=f"journal:del:{entry_id}"),

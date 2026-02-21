@@ -61,6 +61,14 @@ class User(Base, TimestampMixin):
             "ai_daily_brief": True,
             "ai_journal_review": True,
             "knowledge_level": "beginner",
+            "mentor_name": "Железный ментор",
+            "mentor_persona": "goggins",
+            "mentor_discipline_bias": 85,
+            "ui": {
+                "compact_mode": False,
+                "show_completed_today": True,
+                "show_estimate_minutes": True,
+            },
         }
         if self.settings_json:
             try:

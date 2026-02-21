@@ -21,6 +21,8 @@ def setup_routers():
     from src.bot.handlers.journal import router as journal_router
     from src.bot.handlers.ai_chat import router as ai_chat_router
     from src.bot.handlers.profile import router as profile_router
+    from src.bot.handlers.learning import router as learning_router
+    from src.bot.handlers.playlists import router as playlists_router
 
     dp.include_router(start_router)
     dp.include_router(tasks_router)
@@ -28,3 +30,5 @@ def setup_routers():
     dp.include_router(journal_router)
     dp.include_router(ai_chat_router)
     dp.include_router(profile_router)
+    dp.include_router(learning_router)
+    dp.include_router(playlists_router)
