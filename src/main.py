@@ -45,7 +45,7 @@ async def main():
                 )
                 await asyncio.sleep(retry_delay)
             except Exception as e:
-                logger.exception("Критическая ошибка polling: %s", e)
+                logger.error("Ошибка polling: %s. Повтор через %s сек.", e, retry_delay)
                 await asyncio.sleep(retry_delay)
     finally:
         try:

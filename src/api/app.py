@@ -238,6 +238,7 @@ def _is_db_connectivity_error(exc: Exception) -> bool:
     patterns = (
         "connection_lost",
         "cannot connect",
+        "connection refused",
         "connection reset",
         "targetserverattributenotmatched",
         "asyncpg",
@@ -256,35 +257,47 @@ def _flatten_exceptions(exc: BaseException) -> list[BaseException]:
     return [exc]
 
 
-@app.middleware("http")
-async def db_error_guard(request, call_next):
-    try:
-        return await call_next(request)
-    except SQLAlchemyError as e:
-        logger.error("DB error on %s %s: %s", request.method, request.url.path, e)
-        from fastapi.responses import JSONResponse
+@app.exception_handler(SQLAlchemyError)
+async def sqlalchemy_error_handler(request, exc: SQLAlchemyError):
+    from fastapi.responses import JSONResponse
+    logger.error("DB error on %s %s: %s", request.method, request.url.path, exc)
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "База данных недоступна. Проверь DATABASE_URL и сеть к БД."},
+    )
+
+
+@app.exception_handler(ExceptionGroup)
+async def exception_group_handler(request, exc: ExceptionGroup):
+    from fastapi.responses import JSONResponse
+    errors = _flatten_exceptions(exc)
+    db_related = any(
+        isinstance(err, SQLAlchemyError) or _is_db_connectivity_error(Exception(str(err)))
+        for err in errors
+    )
+    if db_related:
+        logger.error("Connectivity error on %s %s: %s", request.method, request.url.path, exc)
         return JSONResponse(
             status_code=503,
             content={
-                "detail": "База данных недоступна. Проверь DATABASE_URL и сеть к БД.",
+                "detail": "Сервер/БД недоступны по сети. Запусти локальную БД или проверь интернет/VPN.",
             },
         )
-    except BaseException as e:
-        errors = _flatten_exceptions(e)
-        db_related = any(
-            isinstance(err, SQLAlchemyError) or _is_db_connectivity_error(Exception(str(err)))
-            for err in errors
+    return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
+
+
+@app.exception_handler(ConnectionError)
+async def connection_error_handler(request, exc: ConnectionError):
+    from fastapi.responses import JSONResponse
+    logger.error("Connection error on %s %s: %s", request.method, request.url.path, exc)
+    if _is_db_connectivity_error(exc):
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": "Сервер/БД недоступны по сети. Запусти локальную БД или проверь интернет/VPN.",
+            },
         )
-        if db_related:
-            logger.error("Connectivity error on %s %s: %s", request.method, request.url.path, e)
-            from fastapi.responses import JSONResponse
-            return JSONResponse(
-                status_code=503,
-                content={
-                    "detail": "Сервер/БД недоступны по сети. Запусти локальную БД или проверь интернет/VPN.",
-                },
-            )
-        raise
+    return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
 
 
 @app.get("/health")
