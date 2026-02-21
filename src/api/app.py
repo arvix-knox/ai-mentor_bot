@@ -3,12 +3,14 @@ import re
 from datetime import date
 from pathlib import Path
 from uuid import uuid4
+import logging
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.core.database import async_session_factory
 from src.repositories.user_repo import UserRepository
@@ -123,6 +125,7 @@ class PlaylistTrackPayload(BaseModel):
 
 
 app = FastAPI(title="Mentor Bot WebApp API", version="1.0.0")
+logger = logging.getLogger(__name__)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -222,9 +225,66 @@ def _parse_time_from_text(text: str) -> str | None:
 
 @app.on_event("startup")
 async def startup():
-    async with async_session_factory() as session:
-        await AchievementService(session).ensure_catalog()
-        await session.commit()
+    try:
+        async with async_session_factory() as session:
+            await AchievementService(session).ensure_catalog()
+            await session.commit()
+    except Exception as e:
+        logger.warning("Startup DB init skipped: %s", e)
+
+
+def _is_db_connectivity_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    patterns = (
+        "connection_lost",
+        "cannot connect",
+        "connection reset",
+        "targetserverattributenotmatched",
+        "asyncpg",
+        "database",
+        "ssl",
+    )
+    return any(p in text for p in patterns)
+
+
+def _flatten_exceptions(exc: BaseException) -> list[BaseException]:
+    if isinstance(exc, BaseExceptionGroup):
+        flat: list[BaseException] = []
+        for inner in exc.exceptions:
+            flat.extend(_flatten_exceptions(inner))
+        return flat
+    return [exc]
+
+
+@app.middleware("http")
+async def db_error_guard(request, call_next):
+    try:
+        return await call_next(request)
+    except SQLAlchemyError as e:
+        logger.error("DB error on %s %s: %s", request.method, request.url.path, e)
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": "База данных недоступна. Проверь DATABASE_URL и сеть к БД.",
+            },
+        )
+    except BaseException as e:
+        errors = _flatten_exceptions(e)
+        db_related = any(
+            isinstance(err, SQLAlchemyError) or _is_db_connectivity_error(Exception(str(err)))
+            for err in errors
+        )
+        if db_related:
+            logger.error("Connectivity error on %s %s: %s", request.method, request.url.path, e)
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "detail": "Сервер/БД недоступны по сети. Запусти локальную БД или проверь интернет/VPN.",
+                },
+            )
+        raise
 
 
 @app.get("/health")

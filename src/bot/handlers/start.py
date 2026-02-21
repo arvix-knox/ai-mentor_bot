@@ -8,6 +8,7 @@ from src.models.user import User
 from src.services.gamification_service import GamificationService
 from src.bot.keyboards.inline import main_menu_keyboard, back_keyboard, webapp_open_keyboard
 from src.bot.keyboards.reply import main_reply_keyboard
+from src.config import settings
 
 router = Router()
 
@@ -45,6 +46,7 @@ async def cmd_help(message: Message, **kwargs):
         "📝 `/journal add`\n"
         "🤖 `/ai Вопрос`\n"
         "🌐 `/webapp`\n"
+        "🧪 `/webapp_local`\n"
         "🎓 `/learning`\n"
         "🎵 `/playlist`\n"
         "📊 `/stats` | 📈 `/review`\n"
@@ -57,6 +59,15 @@ async def cmd_help(message: Message, **kwargs):
 @router.message(Command("webapp"))
 async def cmd_webapp(message: Message):
     await message.answer("🌐 Открой Web App:", reply_markup=webapp_open_keyboard())
+
+
+@router.message(Command("webapp_local"))
+async def cmd_webapp_local(message: Message):
+    await message.answer(
+        "🧪 Локальный запуск Web App:\n"
+        f"`{settings.WEBAPP_URL}`\n\n"
+        "Открой эту ссылку в браузере на том же компьютере, где запущен backend."
+    )
 
 
 @router.message(Command("stats"))

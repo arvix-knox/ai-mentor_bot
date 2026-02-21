@@ -1,6 +1,8 @@
 import asyncio
 import logging
 
+from aiogram.exceptions import TelegramNetworkError
+
 from src.config import settings
 from src.bot.loader import bot, dp, setup_routers
 from src.bot.middlewares.db_session import DbSessionMiddleware
@@ -27,9 +29,30 @@ async def main():
     setup_routers()
     reminder_scheduler.start()
 
-    await bot.delete_webhook(drop_pending_updates=True)
-    logger.info("Bot is running in polling mode")
-    await dp.start_polling(bot)
+    retry_delay = 8
+    try:
+        while True:
+            try:
+                await bot.delete_webhook(drop_pending_updates=True)
+                logger.info("Bot is running in polling mode")
+                await dp.start_polling(bot)
+                break
+            except TelegramNetworkError as e:
+                logger.error(
+                    "Telegram API недоступен (%s). Повтор через %s сек.",
+                    e,
+                    retry_delay,
+                )
+                await asyncio.sleep(retry_delay)
+            except Exception as e:
+                logger.exception("Критическая ошибка polling: %s", e)
+                await asyncio.sleep(retry_delay)
+    finally:
+        try:
+            reminder_scheduler.scheduler.shutdown(wait=False)
+        except Exception:
+            pass
+        await bot.session.close()
 
 
 if __name__ == "__main__":

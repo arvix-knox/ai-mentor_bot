@@ -31,6 +31,7 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
 def webapp_open_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🌐 Открыть Web App", web_app=WebAppInfo(url=settings.WEBAPP_URL))],
+        [InlineKeyboardButton(text="🔗 Открыть в браузере", url=settings.WEBAPP_URL)],
         [InlineKeyboardButton(text="🏠 Главное меню", callback_data="menu:main")],
     ])
 
